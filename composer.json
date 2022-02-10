@@ -7,7 +7,7 @@
     "require": {
         "php": ">=5.6",
         "league/flysystem": "~1.0",
-        "argentcrusade/selectel-cloud-storage": "~1.1"
+        "argentcrusade/selectel-cloud-storage": "dev-master"
     },
     "require-dev": {
         "phpunit/phpunit": "~5.0",
@@ -23,6 +23,12 @@
             "tests/"
         ]
     },
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "git@github.com:vitamin-tools/flysystem-selectel.git"
+        }
+    ],
     "extra": {
         "laravel": {
             "providers": [
