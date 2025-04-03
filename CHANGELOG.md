@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) 
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [2.0.0] - 2025-04-03
+- Upgrade to league/flysystem 2.5.x.
+- Support for PHP 5.6 has been removed. PHP version 8.1 or higher is now required.
+
 ## [Unreleased]
 
 ## [1.2.0] - 2017-09-27

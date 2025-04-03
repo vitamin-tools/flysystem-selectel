@@ -1,104 +1,64 @@
 <?php
 
+declare(strict_types = 1);
+
 namespace ArgentCrusade\Flysystem\Selectel;
 
+use ArgentCrusade\Selectel\CloudStorage\Contracts\FileContract;
 use League\Flysystem\Config;
-use League\Flysystem\AdapterInterface;
-use League\Flysystem\Adapter\Polyfill\NotSupportingVisibilityTrait;
 use ArgentCrusade\Selectel\CloudStorage\Contracts\ContainerContract;
 use ArgentCrusade\Selectel\CloudStorage\Exceptions\FileNotFoundException;
 use ArgentCrusade\Selectel\CloudStorage\Exceptions\UploadFailedException;
 use ArgentCrusade\Selectel\CloudStorage\Exceptions\ApiRequestFailedException;
+use League\Flysystem\DirectoryAttributes;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
+use League\Flysystem\PathPrefixer;
+use League\Flysystem\StorageAttributes;
+use League\Flysystem\Visibility;
+use LogicException;
 
-class SelectelAdapter implements AdapterInterface
+class SelectelAdapter implements FilesystemAdapter
 {
-    use NotSupportingVisibilityTrait;
+    public function __construct(
+        protected readonly ContainerContract $container,
+    ) {}
 
-    /**
-     * Storage container.
-     *
-     * @var \ArgentCrusade\Selectel\CloudStorage\Contracts\ContainerContract
-     */
-    protected $container;
-
-    /**
-     * Create new instance.
-     *
-     * @param \ArgentCrusade\Selectel\CloudStorage\Contracts\ContainerContract $container
-     */
-    public function __construct(ContainerContract $container)
-    {
-        $this->container = $container;
-    }
-
-    /**
-     * Loads file from container.
-     *
-     * @param string $path Path to file.
-     *
-     * @return \ArgentCrusade\Selectel\CloudStorage\Contracts\FileContract
-     */
-    protected function getFile($path)
-    {
-        return $this->container->files()->find($path);
-    }
-
-    /**
-     * Transforms internal files array to Flysystem-compatible one.
-     *
-     * @param array $files Original Selectel's files array.
-     *
-     * @return array
-     */
-    protected function transformFiles($files)
-    {
-        $result = [];
-
-        foreach ($files as $file) {
-            $result[] = [
-                'type' => $file['content_type'] === 'application/directory' ? 'dir' : 'file',
-                'path' => $file['name'],
-                'size' => intval($file['bytes']),
-                'timestamp' => strtotime($file['last_modified']),
-                'mimetype' => $file['content_type'],
-            ];
-        }
-
-        return $result;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function has($path)
+    public function fileExists(string $path): bool
     {
         return $this->container->files()->exists($path);
     }
 
-    /**
-     * {@inheritdoc}
-     */
-    public function read($path)
+    public function fileSize(string $path): FileAttributes
     {
-        try {
-            $file = $this->getFile($path);
-        } catch (FileNotFoundException $e) {
-            return false;
-        }
-
-        $contents = $file->read();
-
-        return compact('contents');
+        return new FileAttributes(
+            $path,
+            $this->container->files()->find($path)->size(),
+        );
     }
 
     /**
      * {@inheritdoc}
      */
-    public function readStream($path)
+    public function read(string $path): string
     {
         try {
             $file = $this->getFile($path);
-        } catch (FileNotFoundException $e) {
+        } catch (FileNotFoundException) {
+            return '';
+        }
+
+        return $file->read();
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function readStream(string $path)
+    {
+        try {
+            $file = $this->getFile($path);
+        } catch (FileNotFoundException) {
             return false;
         }
 
@@ -106,68 +66,146 @@ class SelectelAdapter implements AdapterInterface
 
         rewind($stream);
 
-        return compact('stream');
+        return $stream;
     }
 
     /**
      * {@inheritdoc}
      */
-    public function listContents($directory = '', $recursive = false)
+    public function listContents(string $path = '', bool $deep = false): iterable
     {
-        $files = $this->container->files()->withPrefix($directory)->get();
-        $result = $this->transformFiles($files);
+        $prefixer = new PathPrefixer($path, DIRECTORY_SEPARATOR);
 
-        return $result;
+        $files = $this->container->files()->fromDirectory($path)->all();
+
+        /** @var array{
+         *     bytes:int,
+         *     hash:string,
+         *     name:string,
+         *     content_type:string,
+         *     last_modified:string,
+         *     filename:string
+         * } $fileInfo
+         */
+        foreach ($files as $fileInfo) {
+            yield $this->fileInfoToAttributes($prefixer, $fileInfo);
+        }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getMetadata($path)
+    public function write(string $path, string $contents, Config $config): void
     {
-        $files = $this->listContents($path);
-
-        return isset($files[0]) ? $files[0] : false;
+        $this->writeToContainer('String', $path, $contents);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getSize($path)
+    public function writeStream(string $path, $contents, Config $config): void
     {
-        return $this->getMetadata($path);
+        $this->writeToContainer('Stream', $path, $contents);
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getMimetype($path)
+    public function move(string $source, string $destination, Config $config): void
     {
-        return $this->getMetadata($path);
+        try {
+            $this->getFile($source)->rename($destination);
+        } catch (ApiRequestFailedException) {
+            return;
+        }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function getTimestamp($path)
+    public function copy(string $source, string $destination, Config $config): void
     {
-        return $this->getMetadata($path);
+        try {
+            $this->getFile($source)->copy($destination);
+        } catch (ApiRequestFailedException) {
+            return;
+        }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function write($path, $contents, Config $config)
+    public function delete(string $path): void
     {
-        return $this->writeToContainer('String', $path, $contents);
+        try {
+            $this->getFile($path)->delete();
+        } catch (ApiRequestFailedException) {
+            return;
+        }
     }
 
     /**
      * {@inheritdoc}
      */
-    public function writeStream($path, $resource, Config $config)
+    public function deleteDirectory(string $path): void
     {
-        return $this->writeToContainer('Stream', $path, $resource);
+        try {
+            $this->container->deleteDir($path);
+        } catch (ApiRequestFailedException) {
+            return;
+        }
+    }
+
+    /**
+     * {@inheritdoc}
+     */
+    public function createDirectory(string $path, Config $config): void
+    {
+        try {
+            $this->container->createDir($path);
+        } catch (ApiRequestFailedException) {
+            return;
+        }
+    }
+
+    public function visibility(string $path): FileAttributes
+    {
+        return new FileAttributes($path, null, Visibility::PUBLIC);
+    }
+
+    public function setVisibility(string $path, string $visibility): void
+    {
+        throw new LogicException(
+            sprintf(
+                '%s does not support visibility setting. Path: %s, visibility: %s',
+                get_class($this),
+                $path,
+                $visibility
+            ),
+        );
+    }
+
+    public function mimeType(string $path): FileAttributes
+    {
+        return new FileAttributes(
+            $path,
+            null,
+            null,
+            null,
+            $this->container->files()->find($path)->contentType(),
+        );
+    }
+
+    public function lastModified(string $path): FileAttributes
+    {
+        $lastModified = $this->container->files()->find($path)->lastModifiedAt();
+
+        return new FileAttributes(
+            $path,
+            null,
+            null,
+            strtotime($lastModified),
+        );
     }
 
     /**
@@ -179,112 +217,49 @@ class SelectelAdapter implements AdapterInterface
      *
      * @return array|bool
      */
-    protected function writeToContainer($type, $path, $payload)
+    protected function writeToContainer(string $type, string $path, mixed $payload): void
     {
         try {
             $this->container->{'uploadFrom'.$type}($path, $payload);
-        } catch (UploadFailedException $e) {
-            return false;
+        } catch (UploadFailedException) {
+            return;
         }
-
-        return $this->getMetadata($path);
     }
 
     /**
-     * {@inheritdoc}
-     */
-    public function update($path, $contents, Config $config)
-    {
-        return $this->write($path, $contents, $config);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function updateStream($path, $resource, Config $config)
-    {
-        return $this->writeStream($path, $resource, $config);
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function rename($path, $newpath)
-    {
-        try {
-            $this->getFile($path)->rename($newpath);
-        } catch (ApiRequestFailedException $e) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function copy($path, $newpath)
-    {
-        try {
-            $this->getFile($path)->copy($newpath);
-        } catch (ApiRequestFailedException $e) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function delete($path)
-    {
-        try {
-            $this->getFile($path)->delete();
-        } catch (ApiRequestFailedException $e) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function deleteDir($path)
-    {
-        try {
-            $this->container->deleteDir($path);
-        } catch (ApiRequestFailedException $e) {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * {@inheritdoc}
-     */
-    public function createDir($dirname, Config $config)
-    {
-        try {
-            $this->container->createDir($dirname);
-        } catch (ApiRequestFailedException $e) {
-            return false;
-        }
-
-        return $this->getMetadata($dirname);
-    }
-
-    /**
-     * Get full URL to given path.
+     * Loads file from container.
      *
-     * @param string $path = ''
+     * @param string $path Path to file.
      *
-     * @return string
+     * @return FileContract
      */
-    public function getUrl($path = '')
+    protected function getFile(string $path): FileContract
     {
-        return $this->container->url($path);
+        return $this->container->files()->find($path);
+    }
+
+    protected function fileInfoToAttributes(
+        PathPrefixer $prefixer,
+        array $fileInfo,
+    ): StorageAttributes {
+        $path = $prefixer->stripPrefix($fileInfo['name']);
+
+        $isDirectory = $fileInfo['content_type'] === 'application/directory';
+
+        if ($isDirectory) {
+            return new DirectoryAttributes(
+                $path,
+                Visibility::PUBLIC,
+                strtotime($fileInfo['last_modified'])
+            );
+        } else {
+            return new FileAttributes(
+                $path,
+                $fileInfo['bytes'],
+                Visibility::PUBLIC,
+                strtotime($fileInfo['last_modified']),
+                $fileInfo['content_type'],
+            );
+        }
     }
 }

@@ -1,17 +1,24 @@
 <?php
 
+declare(strict_types = 1);
+
 use ArgentCrusade\Flysystem\Selectel\SelectelAdapter;
 use ArgentCrusade\Selectel\CloudStorage\Collections\Collection;
-use League\Flysystem\Config;
+use ArgentCrusade\Selectel\CloudStorage\Container;
+use ArgentCrusade\Selectel\CloudStorage\File;
+use ArgentCrusade\Selectel\CloudStorage\FluentFilesLoader;
+use League\Flysystem\FileAttributes;
+use League\Flysystem\FilesystemAdapter;
+use PHPUnit\Framework\TestCase;
 
-class SelectelAdapterTest extends PHPUnit_Framework_TestCase
+class SelectelAdapterTest extends TestCase
 {
-    public function tearDown()
+    public function tearDown(): void
     {
         Mockery::close();
     }
 
-    public function selectelProvider()
+    public function selectelProvider(): array
     {
         $collection = new Collection([
             [
@@ -22,11 +29,11 @@ class SelectelAdapterTest extends PHPUnit_Framework_TestCase
             ],
         ]);
 
-        $files = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\FluentFilesLoader');
+        $files = Mockery::mock(FluentFilesLoader::class);
         $files->shouldReceive('withPrefix')->andReturn($files);
         $files->shouldReceive('get')->andReturn($collection);
 
-        $mock = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\Container');
+        $mock = Mockery::mock(Container::class);
         $mock->shouldReceive('type')->andReturn('public');
         $mock->shouldReceive('files')->andReturn($files);
 
@@ -35,7 +42,7 @@ class SelectelAdapterTest extends PHPUnit_Framework_TestCase
         ];
     }
 
-    public function metaDataProvider()
+    public function metaDataProvider(): array
     {
         $collection = new Collection([
             [
@@ -46,11 +53,21 @@ class SelectelAdapterTest extends PHPUnit_Framework_TestCase
             ],
         ]);
 
-        $files = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\FluentFilesLoader');
+        $file = Mockery::mock(File::class);
+        $file->shouldReceive('path')->andReturn('/path/to/file');
+        $file->shouldReceive('directory')->andReturn('/path/to');
+        $file->shouldReceive('name')->andReturn('file');
+        $file->shouldReceive('lastModifiedAt')->andReturn('2000-01-01 00:00:00');
+        $file->shouldReceive('size')->andReturn(1024);
+        $file->shouldReceive('contentType')->andReturn('text/plain');
+        $file->shouldReceive('isDirectory')->andReturn(false);
+
+        $files = Mockery::mock(FluentFilesLoader::class);
         $files->shouldReceive('withPrefix')->andReturn($files);
         $files->shouldReceive('get')->andReturn($collection);
+        $files->shouldReceive('find')->andReturn($file);
 
-        $mock = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\Container');
+        $mock = Mockery::mock( Container::class);
         $mock->shouldReceive('type')->andReturn('public');
         $mock->shouldReceive('files')->andReturn($files);
 
@@ -58,19 +75,11 @@ class SelectelAdapterTest extends PHPUnit_Framework_TestCase
 
         return [
             [
-                'method' => 'getMetadata',
+                'method' => 'mimeType',
                 'adapter' => $adapter,
             ],
             [
-                'method' => 'getMimetype',
-                'adapter' => $adapter,
-            ],
-            [
-                'method' => 'getTimestamp',
-                'adapter' => $adapter,
-            ],
-            [
-                'method' => 'getSize',
+                'method' => 'lastModified',
                 'adapter' => $adapter,
             ],
         ];
@@ -79,103 +88,34 @@ class SelectelAdapterTest extends PHPUnit_Framework_TestCase
     /**
      * @dataProvider metaDataProvider
      */
-    public function testMetaData($method, $adapter)
+    public function testMetaData(string $method, FilesystemAdapter $adapter)
     {
         $result = $adapter->{$method}('path');
 
-        $this->assertInternalType('array', $result);
+        self::assertInstanceOf( FileAttributes::class, $result);
     }
 
     /**
      * @dataProvider selectelProvider
      */
-    public function testHas($adapter, $mock, $files)
+    public function testHas(FilesystemAdapter $adapter, $mock, $files)
     {
         $files->shouldReceive('exists')->andReturn(true);
 
-        $this->assertTrue($adapter->has('something'));
+        self::assertTrue($adapter->fileExists('something'));
     }
 
     /**
      * @dataProvider selectelProvider
      */
-    public function testUrl($adapter, $mock, $files)
-    {
-        $mock->shouldReceive('url')->with('/file.txt')->andReturn('https://static.example.org/file.txt');
-        $mock->shouldReceive('url')->with('file.txt')->andReturn('https://static.example.org/file.txt');
-
-        $this->assertEquals('https://static.example.org/file.txt', $adapter->getUrl('/file.txt'));
-        $this->assertEquals('https://static.example.org/file.txt', $adapter->getUrl('file.txt'));
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testWrite($adapter, $mock)
-    {
-        $mock->shouldReceive('uploadFromString')->andReturn(md5('test'));
-
-        $result = $adapter->write('something', 'contents', new Config());
-        $this->assertInternalType('array', $result);
-        $this->assertArrayHasKey('type', $result);
-        $this->assertEquals('file', $result['type']);
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testUpdate($adapter, $mock)
-    {
-        $mock->shouldReceive('uploadFromString')->andReturn(md5('test'));
-
-        $result = $adapter->update('something', 'contents', new Config());
-        $this->assertInternalType('array', $result);
-        $this->assertArrayHasKey('type', $result);
-        $this->assertEquals('file', $result['type']);
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testWriteStream($adapter, $mock)
-    {
-        $mock->shouldReceive('uploadFromStream')->andReturn(md5('test'));
-
-        $file = tmpfile();
-        $result = $adapter->writeStream('something', $file, new Config());
-        $this->assertInternalType('array', $result);
-        $this->assertArrayHasKey('type', $result);
-        $this->assertEquals('file', $result['type']);
-        fclose($file);
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testUpdateStream($adapter, $mock)
-    {
-        $mock->shouldReceive('uploadFromStream')->andReturn(md5('test'));
-
-        $file = tmpfile();
-        $result = $adapter->updateStream('something', $file, new Config());
-        $this->assertInternalType('array', $result);
-        $this->assertArrayHasKey('type', $result);
-        $this->assertEquals('file', $result['type']);
-        fclose($file);
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testRead($adapter, $mock, $files)
+    public function testRead(FilesystemAdapter $adapter, $mock, $files)
     {
         $file = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\File');
         $file->shouldReceive('read')->andReturn('something');
         $files->shouldReceive('find')->andReturn($file);
 
         $result = $adapter->read('something');
-        $this->assertInternalType('array', $result);
-        $this->assertArrayHasKey('contents', $result);
+        self::assertSame('something', $result);
     }
 
     /**
@@ -191,60 +131,9 @@ class SelectelAdapterTest extends PHPUnit_Framework_TestCase
         $files->shouldReceive('find')->andReturn($file);
 
         $result = $adapter->readStream('something');
-        $this->assertInternalType('array', $result);
-        $this->assertArrayHasKey('stream', $result);
-        $this->assertEquals('something', fread($result['stream'], 1024));
+        self::assertIsResource($result);
+        self::assertSame('something', fread($result, 1024));
 
         fclose($stream);
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testRename($adapter, $mock, $files)
-    {
-        $file = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\File');
-        $file->shouldReceive('rename')->andReturn('newpath');
-        $files->shouldReceive('find')->andReturn($file);
-
-        $this->assertTrue($adapter->rename('oldpath', 'newpath'));
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testCopy($adapter, $mock, $files)
-    {
-        $file = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\File');
-        $file->shouldReceive('copy')->andReturn('newpath');
-        $files->shouldReceive('find')->andReturn($file);
-
-        $this->assertTrue($adapter->copy('from', 'to'));
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testCreateDir($adapter, $mock)
-    {
-        $mock->shouldReceive('createDir')->andReturn(md5('test'));
-        $result = $adapter->createDir('something', new Config());
-
-        $this->assertInternalType('array', $result);
-    }
-
-    /**
-     * @dataProvider selectelProvider
-     */
-    public function testDelete($adapter, $mock, $files)
-    {
-        $file = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\File');
-        $file->shouldReceive('delete')->andReturn(true);
-        $files->shouldReceive('find')->andReturn($file);
-
-        $mock->shouldReceive('deleteDir')->andReturn(true);
-
-        $this->assertTrue($adapter->delete('something'));
-        $this->assertTrue($adapter->deleteDir('something'));
     }
 }

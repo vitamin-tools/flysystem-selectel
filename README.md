@@ -7,7 +7,7 @@
 [![Software License][ico-license]](LICENSE.md)
 
 ## Requirements
-This package requires PHP 5.6 or higher.
+This package requires PHP 8.1 or higher.
 
 ## Installation
 
@@ -18,6 +18,12 @@ $ composer require argentcrusade/flysystem-selectel
 ```
 
 ## Upgrade
+
+### From 1.1.* to 2.0.*
+Due to the upgrade to league/flysystem version 2.5, the adapter ArgentCrusade\Flysystem\Selectel\SelectelAdapter now implements the League\Flysystem\FilesystemAdapter interface, which is incompatible with the League\Flysystem\AdapterInterface used in league/flysystem version 1.x.
+
+For detailed information on migrating from league/flysystem 1.x, see:
+`https://flysystem.thephpleague.com/docs/upgrade-from-1.x/`
 
 ### From 1.0* to 1.1.0
 New setting `container_url` was added. You can set your container's custom domain here (for example, `https://static.example.org`) and this option will be used when retrieving fully qualified URLs to files and directories.
