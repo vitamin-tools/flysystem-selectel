@@ -15,6 +15,14 @@ use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemAdapter;
 use League\Flysystem\PathPrefixer;
 use League\Flysystem\StorageAttributes;
+use League\Flysystem\UnableToCheckExistence;
+use League\Flysystem\UnableToCopyFile;
+use League\Flysystem\UnableToCreateDirectory;
+use League\Flysystem\UnableToDeleteDirectory;
+use League\Flysystem\UnableToDeleteFile;
+use League\Flysystem\UnableToMoveFile;
+use League\Flysystem\UnableToReadFile;
+use League\Flysystem\UnableToWriteFile;
 use League\Flysystem\Visibility;
 use LogicException;
 
@@ -44,8 +52,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $file = $this->getFile($path);
-        } catch (FileNotFoundException) {
-            return '';
+        } catch (FileNotFoundException $e) {
+            throw UnableToReadFile::fromLocation($path, 'File not found', $e);
         }
 
         return $file->read();
@@ -58,8 +66,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $file = $this->getFile($path);
-        } catch (FileNotFoundException) {
-            return false;
+        } catch (FileNotFoundException $e) {
+            throw UnableToReadFile::fromLocation($path, 'File not found', $e);
         }
 
         $stream = $file->readStream();
@@ -97,7 +105,11 @@ class SelectelAdapter implements FilesystemAdapter
      */
     public function write(string $path, string $contents, Config $config): void
     {
-        $this->writeToContainer('String', $path, $contents);
+        try {
+            $this->writeToContainer('String', $path, $contents);
+        } catch (UploadFailedException $e) {
+            throw UnableToWriteFile::atLocation($path, 'Upload failed', $e);
+        }
     }
 
     /**
@@ -105,7 +117,11 @@ class SelectelAdapter implements FilesystemAdapter
      */
     public function writeStream(string $path, $contents, Config $config): void
     {
-        $this->writeToContainer('Stream', $path, $contents);
+        try {
+            $this->writeToContainer('Stream', $path, $contents);
+        } catch (UploadFailedException $e) {
+            throw UnableToWriteFile::atLocation($path, 'Upload failed', $e);
+        }
     }
 
     /**
@@ -115,8 +131,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $this->getFile($source)->rename($destination);
-        } catch (ApiRequestFailedException) {
-            return;
+        } catch (ApiRequestFailedException $e) {
+            throw UnableToMoveFile::fromLocationTo($source, $destination, $e);
         }
     }
 
@@ -127,8 +143,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $this->getFile($source)->copy($destination);
-        } catch (ApiRequestFailedException) {
-            return;
+        } catch (ApiRequestFailedException $e) {
+            throw UnableToCopyFile::fromLocationTo($source, $destination, $e);
         }
     }
 
@@ -139,8 +155,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $this->getFile($path)->delete();
-        } catch (ApiRequestFailedException) {
-            return;
+        } catch (ApiRequestFailedException $e) {
+            throw UnableToDeleteFile::atLocation($path, 'API request failed', $e);
         }
     }
 
@@ -151,8 +167,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $this->container->deleteDir($path);
-        } catch (ApiRequestFailedException) {
-            return;
+        } catch (ApiRequestFailedException $e) {
+            throw UnableToDeleteDirectory::atLocation($path, 'API request failed', $e);
         }
     }
 
@@ -163,8 +179,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $this->container->createDir($path);
-        } catch (ApiRequestFailedException) {
-            return;
+        } catch (ApiRequestFailedException $e) {
+            throw UnableToCreateDirectory::atLocation($path, 'API request failed', $e);
         }
     }
 
@@ -175,8 +191,8 @@ class SelectelAdapter implements FilesystemAdapter
     {
         try {
             $directory = $this->container->files()->find($path);
-        } catch (FileNotFoundException) {
-            return false;
+        } catch (FileNotFoundException $e) {
+            throw UnableToCheckExistence::forLocation($path, $e);
         }
 
         return $directory->contentType() === 'application/directory';
@@ -228,16 +244,11 @@ class SelectelAdapter implements FilesystemAdapter
      * @param string          $type    Upload type
      * @param string          $path    File path
      * @param string|resource $payload String content or Stream resource
-     *
-     * @return array|bool
+     * @throws UploadFailedException
      */
     protected function writeToContainer(string $type, string $path, mixed $payload): void
     {
-        try {
-            $this->container->{'uploadFrom'.$type}($path, $payload);
-        } catch (UploadFailedException) {
-            return;
-        }
+        $this->container->{'uploadFrom'.$type}($path, $payload);
     }
 
     /**

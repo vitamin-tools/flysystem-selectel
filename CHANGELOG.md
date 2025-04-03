@@ -4,6 +4,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/) 
 and this project adheres to [Semantic Versioning](http://semver.org/).
 
+## [3.0.1] - 2025-04-03
+### Fixed
+- Fixed Selectel API exception handling.
+
 ## [3.0.0] - 2025-04-03
 - Upgrade to league/flysystem 3.x.
 - Added method "directoryExists"

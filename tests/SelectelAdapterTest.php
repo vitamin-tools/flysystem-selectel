@@ -3,8 +3,6 @@
 declare(strict_types = 1);
 
 use ArgentCrusade\Flysystem\Selectel\SelectelAdapter;
-use ArgentCrusade\Selectel\CloudStorage\Api\ApiClient;
-use ArgentCrusade\Selectel\CloudStorage\CloudStorage;
 use ArgentCrusade\Selectel\CloudStorage\Collections\Collection;
 use ArgentCrusade\Selectel\CloudStorage\Container;
 use ArgentCrusade\Selectel\CloudStorage\File;
