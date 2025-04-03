@@ -3,6 +3,8 @@
 declare(strict_types = 1);
 
 use ArgentCrusade\Flysystem\Selectel\SelectelAdapter;
+use ArgentCrusade\Selectel\CloudStorage\Api\ApiClient;
+use ArgentCrusade\Selectel\CloudStorage\CloudStorage;
 use ArgentCrusade\Selectel\CloudStorage\Collections\Collection;
 use ArgentCrusade\Selectel\CloudStorage\Container;
 use ArgentCrusade\Selectel\CloudStorage\File;
@@ -98,11 +100,24 @@ class SelectelAdapterTest extends TestCase
     /**
      * @dataProvider selectelProvider
      */
-    public function testHas(FilesystemAdapter $adapter, $mock, $files)
+    public function testFileExists(FilesystemAdapter $adapter, $mock, $files)
     {
         $files->shouldReceive('exists')->andReturn(true);
 
         self::assertTrue($adapter->fileExists('something'));
+    }
+
+    /**
+     * @dataProvider selectelProvider
+     */
+    public function testDirectoryExists(FilesystemAdapter $adapter, $mock, $files)
+    {
+        $directory = Mockery::mock('ArgentCrusade\Selectel\CloudStorage\File');
+        $directory->shouldReceive('contentType')->andReturn('application/directory');
+
+        $files->shouldReceive('find')->andReturn($directory);
+
+        self::assertTrue($adapter->directoryExists('some/directory'));
     }
 
     /**

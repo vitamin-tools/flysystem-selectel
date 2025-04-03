@@ -168,6 +168,20 @@ class SelectelAdapter implements FilesystemAdapter
         }
     }
 
+    /**
+     * {@inheritdoc}
+     */
+    public function directoryExists(string $path): bool
+    {
+        try {
+            $directory = $this->container->files()->find($path);
+        } catch (FileNotFoundException) {
+            return false;
+        }
+
+        return $directory->contentType() === 'application/directory';
+    }
+
     public function visibility(string $path): FileAttributes
     {
         return new FileAttributes($path, null, Visibility::PUBLIC);
